@@ -1,0 +1,96 @@
+# Xliens 插件配置模板
+#
+# 不要直接改这个文件！install.ps1 会用这里的内容生成同目录下的
+# cordis.patch.yml（真实配置），安装时把下面的占位符替换成本机路径。
+#
+# 手工安装的话：复制成 cordis.patch.yml，把正文里的花括号占位符换掉：
+#   {{NODE}}             node 可执行文件路径（建议用 DSH 自带的那个）
+#   {{ROOT}}             本仓库根目录（用正斜杠）
+#   {{SNOWLUMA_HOME}}    SnowLuma 安装目录（用正斜杠）
+
+- insert:
+    - id: xliens
+      name: xliens
+      config:
+        enabled: true
+
+        # 设置页之外的可视化控制台：/xliens/web
+        # 不想要独立页面时改成 false（设置页本身不受影响）
+        webConsole: true
+
+        # 启动时归档机器人工作区里同 key 的旧重复会话（只处理机器人工作区）
+        sessionDedupe: true
+
+        # ── 桥接：QQ 消息进 DSH ──
+        bridge:
+          enabled: true
+
+          # 放行规则：默认全部不放行，必须自己加才生效。
+          # 保存后立即生效（每次收到消息都会重新读文件），不用重启。
+          # 也可以在 DSH 设置 → Xliens → 白名单 里改。
+          allow:
+            groups: []
+            private: []
+            allowAllWhenEmpty: false
+          deny:
+            users: []
+
+          wsUrl: 'ws://127.0.0.1:3001'
+          # token 不写这里（会进 git），放 file/snowluma.ws
+          credentialFile: '{{ROOT}}/file/snowluma.ws'
+
+          # 安全边界：QQ 会话必须挂带工具白名单的 preset
+          agentPreset: 'xliens-chat'
+
+          # 回复时机（参考旧版桥接的唤醒策略）
+          # smart    = 被 @/叫名字、直接问机器人、命中关键词才回
+          # mentions = 只回 @ 和名字
+          # all      = 每条群消息都回（旧行为，不建议）
+          # off      = 群聊完全不回，只记 pending（私聊仍回）
+          reply:
+            # 总开关：设置页/Web 控制台改 file/settings.json 可运行时覆盖，不用重启
+            enabled: true
+            mode: smart
+            ambientProbability: 0
+            cooldownMs: 45000
+            questions: true
+            keywords: []
+            # 群聊参与：普通讨论有小概率进入一段参与窗口，
+            # 窗口内可以自然接几句，而不是只等点名。
+            social:
+              enabled: true
+              triggerProbability: 0.1
+              activeMs: 300000
+              skipProbability: 0.2
+              activeCooldownMs: 15000
+              graceMs: 30000
+
+          # SnowLuma 网关托管：DSH 关掉会连带关掉它，所以启动时由插件拉起
+          autoStartSnowluma: true
+          snowlumaHome: '{{SNOWLUMA_HOME}}'
+
+        # ── Python 记忆服务 ──
+        memory:
+          endpoint: 'http://127.0.0.1:8317'
+          timeoutMs: 15000
+          # 插件自动拉起 8317 时用；和 graph_main/meta.json 的 model 对齐
+          model: 'models/reg_v48_s3'
+
+        # ── 会话管理 ──
+        workspace:
+          title: 'Xliens机器人'
+          path: '{{ROOT}}/.bot-workspace'
+        sessionTitle:
+          private: '私聊 · {name}'
+          group: '群 · {name}({id})'
+
+    # ── 记忆召回工具（MCP）──
+    - id: mcp-xliens
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: xliens
+        transport: stdio
+        command: '{{NODE}}'
+        args:
+          - '{{ROOT}}/bot/lib/mcp-memory.js'
+        toolCallTimeoutMs: 600000

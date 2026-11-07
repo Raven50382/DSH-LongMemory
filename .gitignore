@@ -1,0 +1,30 @@
+# 真实数据与凭证，永不提交
+file/*
+!file/alias.json.example
+graph_main/
+graph_backup_*/
+graph_damaged_*/
+pending*/
+logs/
+models/
+.bot-workspace/
+.xliens-workspace/
+.xliens-data-root
+.xliens-data-root.tmp
+
+# 凭证
+*.key
+*.pem
+.credentials.yaml
+file/snowluma.ws
+
+# 本地产物
+__pycache__/
+*.pyc
+node_modules/
+bot/node_modules/
+bot/cordis.patch.yml
+
+# 逻辑图不随开源仓库分发
+graph_demo/
+graph_main/

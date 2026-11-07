@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Xliens · 长期记忆控制台</title>
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#070a10">
+<meta name="xliens-console-token" content="__XLIENS_CONSOLE_TOKEN__">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230b1220'/%3E%3Ccircle cx='32' cy='32' r='9' fill='%235eead4'/%3E%3Cellipse cx='32' cy='32' rx='24' ry='9' fill='none' stroke='%237c9cff' stroke-width='2.5' transform='rotate(-28 32 32)'/%3E%3Cellipse cx='32' cy='32' rx='24' ry='9' fill='none' stroke='%23c084fc' stroke-width='2' opacity='.75' transform='rotate(38 32 32)'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/xliens/web/styles.css?v=20261108b">
+</head>
+<body>
+<a class="skip-link" href="#view">跳到主要内容</a>
+
+<div class="app">
+  <aside class="sidebar" id="sidebar">
+    <a class="brand" href="#overview" aria-label="Xliens 总览">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 48 48" fill="none">
+          <ellipse cx="24" cy="24" rx="20" ry="7.5" stroke="url(#g1)" stroke-width="1.6" transform="rotate(-28 24 24)"/>
+          <ellipse cx="24" cy="24" rx="20" ry="7.5" stroke="url(#g2)" stroke-width="1.3" opacity=".7" transform="rotate(40 24 24)"/>
+          <circle cx="24" cy="24" r="5.6" fill="#5eead4"/>
+          <circle cx="24" cy="24" r="8.8" stroke="#5eead4" stroke-opacity=".28" stroke-width="1"/>
+          <circle cx="40.2" cy="14.8" r="2.1" fill="#7c9cff"/>
+          <circle cx="8.4" cy="33.2" r="1.7" fill="#c084fc"/>
+          <defs>
+            <linearGradient id="g1" x1="4" y1="18" x2="44" y2="30" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#5eead4"/><stop offset="1" stop-color="#7c9cff"/>
+            </linearGradient>
+            <linearGradient id="g2" x1="10" y1="6" x2="38" y2="42" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#c084fc"/><stop offset="1" stop-color="#5eead4"/>
+            </linearGradient>
+          </defs>
+        </svg>
+      </span>
+      <span class="brand-text">
+        <strong>Xliens</strong>
+        <small>长期记忆控制台</small>
+      </span>
+    </a>
+
+    <nav class="nav" id="nav" aria-label="控制台导航"></nav>
+
+    <div class="sidebar-foot">
+      <div class="service-card" id="sidebarStatus">
+        <div class="service-line">
+          <span class="status-dot is-idle" id="sidebarDot"></span>
+          <span id="sidebarService">连接中…</span>
+        </div>
+        <div class="service-meta" id="sidebarMeta">正在读取记忆服务</div>
+        <div class="service-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="topbar-title">
+        <button class="icon-btn menu-btn" id="menuBtn" aria-label="打开导航" aria-expanded="false">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+        </button>
+        <div>
+          <h1 id="pageTitle">总览</h1>
+          <p id="pageSub">记忆系统的运行状态与最近一次召回</p>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <div class="health-pill" id="healthPill" title="记忆服务状态">
+          <span class="status-dot is-idle" id="healthDot"></span>
+          <span id="healthText">连接中…</span>
+        </div>
+        <button class="btn ghost" id="refreshBtn" type="button">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+          <span class="btn-label">刷新</span>
+        </button>
+      </div>
+    </header>
+
+    <main class="view" id="view" tabindex="-1">
+      <div class="boot" id="boot">
+        <div class="boot-orb" aria-hidden="true"><i></i><i></i><i></i></div>
+        <p>正在连接记忆服务…</p>
+        <span>第一次加载需要一点时间</span>
+      </div>
+    </main>
+  </div>
+</div>
+
+<div class="sidebar-shade" id="sidebarShade"></div>
+
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+<div class="modal-root" id="modalRoot"></div>
+
+<noscript>
+  <div class="noscript">这个页面需要 JavaScript。请在支持 JavaScript 的浏览器里打开。</div>
+</noscript>
+
+<script type="module" src="/xliens/web/app.js?v=20261108b"></script>
+</body>
+</html>
