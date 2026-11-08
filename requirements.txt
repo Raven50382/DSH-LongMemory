@@ -1,0 +1,11 @@
+# Xliens 的 Python 依赖
+#
+# 只列直接依赖，版本用兼容范围。
+# 装法：py -3 -m pip install -r requirements.txt
+#
+# 注意：torch 装 CPU 版即可（GPU 版从 PyTorch 官网按 CUDA 版本另装）：
+#   py -3 -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+torch>=2.4,<3
+transformers>=4.44,<5
+numpy>=1.26

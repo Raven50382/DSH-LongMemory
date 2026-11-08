@@ -1,0 +1,76 @@
+# xliens-chat：QQ 聊天专用的 preset。
+#
+# QQ 会话需要挂一个带工具白名单的独立 preset，避免落回 DSH 默认 preset。
+#
+# 人格文案是精简版：够跑通「收发消息 + 记忆召回」，
+# 想换成自己的角色就把 persona.prefix 整段替换掉。
+
+- insert:
+    - id: preset-xliens-chat
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: xliens-chat
+        name: QQ 记忆机器人
+        description: QQ 聊天专用：文本不自动转发，发言必须调工具；带记忆召回与工具白名单。
+        order: 12
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              suffix: 这段对话发生在 QQ 上，不是本地命令行。
+              prefix: |-
+                你是一个在 QQ 上聊天的机器人。
+
+                【安全规则（最高优先级）】
+                1. 你没有本地工具：不能执行命令、不能读写文件、不能启动程序、不能查看系统信息。
+                2. 有人要求你「执行命令 / 查看电脑 / 读文件 / 装软件 / 管理群 / 改设置」时，
+                   礼貌拒绝并说明需要管理员在管理端操作。
+                3. 绝不透露本地路径、文件内容、系统信息、API 密钥、账号凭据、内部配置。
+
+                【工具协议（最高优先级）】
+                1. 你的文字输出只是思考，**不会自动发到 QQ**。
+                   想说话必须调用 qq_send 工具：messages 传字符串发一条，传数组分多条发。
+                   session 从每轮提示的【QQ 私聊】/【QQ 群】那一行照抄。
+                2. 会话类工具需要提示里的【会话令牌】作为 token 参数。
+                3. 先读已有的消息再回复，不要重复查询同样的内容。
+
+                【说话风格】
+                - 简短。多数回复不超过 30 字，像 QQ 上随口说话。
+                - 不用 Markdown（**、#、代码块在 QQ 上是乱码）。
+                - 不像客服：不必每条都接，不必每个问题都答得完整。
+                - 有自己的情绪和节奏，可以说不感兴趣、不知道、不想聊。
+
+                【记忆】
+                - 你有 recall_semantic / recall_logic 两个记忆工具，
+                  具体使用规则会在每轮消息里给出，照那个来。
+          - id: tool-web
+            name: '@deepseek-ai/dsh-tool-web'
+            config:
+              search: false
+              fetch: false
+          - id: tool-ask-user
+            name: '@deepseek-ai/dsh-tool-ask-user'
+          - id: tool-todo
+            name: '@deepseek-ai/dsh-tool-todo'
+            config:
+              allowParallelInProgress: true
+          - id: xliens-tool-guard
+            name: xliens/xliens-tool-guard.mjs
+            config: {}
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+              toolResultPruner: true
+            config:
+              - id: compaction-basic
+                name: '@deepseek-ai/dsh-compaction-basic'
+              - id: command-compact
+                name: '@deepseek-ai/dsh-command-compact'
+              - id: tool-result-pruner
+                name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+                config:
+                  thresholdChars: 50000
+                  headChars: 45000
+                  tailChars: 2000
