@@ -39,7 +39,7 @@ window.__ModuleLoader__.load({
     function webConsoleUrl() {
       // 带版本查询串：浏览器里如果还留着旧标签页，点入口也不会复用它，
       // 而是打开一个真正重新加载的新地址（否则旧 app.js 会一直缓存着旧视角逻辑）。
-      const version = "20261109i";
+      const version = "20261109j";
       try {
         const base = globalThis.__DSH_TRANSPORT__?.streamBaseUrl;
         if (base) {

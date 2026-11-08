@@ -1179,7 +1179,7 @@ function pageOverview() {
               <div class="api-model-group">
                 <div class="api-model-group-title">API Key 已接入</div>
                 ${(state.seg?.providers || []).map((p) => {
-                  const selected = segCur && segCur.provider === p.provider;
+                  const selected = segCur && segCur.provider === p.provider && segCur.model === p.model;
                   return `<button class="api-model-option${selected ? ' selected' : ''}" type="button"
                     role="option" aria-selected="${selected ? 'true' : 'false'}"
                     data-seg-provider="${esc(p.provider)}" data-seg-model="${esc(p.model)}">

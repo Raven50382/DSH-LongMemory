@@ -1,6 +1,6 @@
 {
   "name": "xliens",
-  "version": "1.6.18",
+  "version": "1.6.19",
   "private": true,
   "description": "Xliens —— 不会遗忘的记忆机器人（EU 逻辑关联图 + 章动召回）",
   "type": "module",
