@@ -522,6 +522,7 @@ function loadStaging(force = false) {
     try {
       const d = await apiGet('/staging/list');
       const list = Array.isArray(d?.items) ? d.items : [];
+      list.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
       state.staging.list = list;
       state.staging.error = null;
       let sel = state.staging.sel;
@@ -4660,11 +4661,13 @@ const StagingGraph = {
     const cands = Array.isArray(e.candidates) ? e.candidates : [];
     const edgeVisible = Number(state.thresholds?.edgeVisible ?? 0.10);
     const hiddenCands = cands.filter((c) => Number(c.score || 0) < edgeVisible).length;
+    const editable = state.staging.detail?.status === 'pending';
+    const ro = editable ? '' : ' disabled';
     const candRow = (c, ci, hidden) => `<div class="sg-edge-row${hidden ? ' sg-edge-unshown' : ''}" data-ci="${ci}" data-tt="${c.target_type}" data-ti="${c.target_type === 'batch' ? c.target_index : c.target_id}" data-manual="${c.manual ? '1' : '0'}"${hidden ? ' style="display:none"' : ''}>
             <button type="button" class="sg-target-link" data-sg-open-target data-tt="${c.target_type}" data-ti="${c.target_type === 'batch' ? c.target_index : c.target_id}">${c.target_type === 'node' ? '#' + esc(c.target_id) : '本批 #' + (Number(c.target_index) + 1)}</button>
             <span class="desc">${esc(c.target_desc || '')}</span>
-            <input class="input mono" data-sg-score value="${Number(c.score || 0).toFixed(2)}">
-            <button class="icon-btn" data-sg-del-edge title="删除">${icon('x', 13)}</button>
+            <input class="input mono" data-sg-score value="${Number(c.score || 0).toFixed(2)}"${editable ? '' : ' disabled'}>
+            <button class="icon-btn" data-sg-del-edge title="删除"${editable ? '' : ' style="display:none"'}>${icon('x', 13)}</button>
           </div>`;
     const highRows = cands.map((c, ci) => ({ c, ci }))
       .filter(({ c }) => Number(c.score || 0) >= edgeVisible)
@@ -4675,30 +4678,49 @@ const StagingGraph = {
     const targets = (state.staging.detail?.targets || []).filter((t) => !(t.type === 'batch' && t.index === n.idx));
     box.innerHTML = `<div class="sg-drawer-head"><span class="node-id">#${esc(n.idx + 1)}</span><h3>本批事件</h3><div class="spacer"></div><button class="icon-btn" data-sg-close aria-label="关闭">${icon('x', 16)}</button></div>
       <div class="sg-drawer-body">
-        <label class="sg-field">事件描述<textarea class="textarea" data-sg-field="desc" style="min-height:62px">${esc(e.desc || '')}</textarea></label>
+        <label class="sg-field">事件描述<textarea class="textarea" data-sg-field="desc" style="min-height:62px"${ro}>${esc(e.desc || '')}</textarea></label>
         <div class="sg-grid3">
-          <label class="sg-field">时间<input class="input mono" data-sg-field="ts" value="${esc(e.ts || '')}"></label>
-          <label class="sg-field">主体<input class="input" data-sg-field="subject" value="${esc(e.subject || '')}"></label>
-          <label class="sg-field">客体<input class="input" data-sg-field="object" value="${esc(e.object || '')}"></label>
+          <label class="sg-field">时间<input class="input mono" data-sg-field="ts" value="${esc(e.ts || '')}"${ro}></label>
+          <label class="sg-field">主体<input class="input" data-sg-field="subject" value="${esc(e.subject || '')}"${ro}></label>
+          <label class="sg-field">客体<input class="input" data-sg-field="object" value="${esc(e.object || '')}"${ro}></label>
         </div>
-        <label class="sg-field">原始对话<textarea class="textarea mono" data-sg-field="source_text" style="min-height:120px">${esc(e.source_text || '')}</textarea></label>
+        <label class="sg-field">原始对话<textarea class="textarea mono" data-sg-field="source_text" style="min-height:120px"${ro}>${esc(e.source_text || '')}</textarea></label>
         <div class="sg-edge-title">候选边（虚线）</div>
         <div class="sg-edge-list">
           ${highRows || (hiddenCands ? '<div class="muted small">没有达到阈值的候选边</div>' : '<div class="muted small">还没有候选边</div>')}
           ${hiddenCands ? `<div class="sg-edge-more"><button class="btn small ghost" type="button" data-sg-show-hidden>${this.showHidden ? '收起隐藏边' : '展开隐藏边'}</button></div>` : ''}
           ${lowRows}
         </div>
-        <div class="sg-edge-add">
+        ${editable ? `<div class="sg-edge-add">
           <input class="input mono" data-sg-target placeholder="EU 编号，本批用 b3">
           <input class="input mono" data-sg-new-score value="0.80">
           <button class="btn small" data-sg-add-edge>${icon('plus', 13)} 连边</button>
-        </div>
+        </div>` : ''}
         <div class="sg-drawer-actions">
-          <button class="btn ${e.locked ? 'primary' : 'ghost'} small" data-sg-lock>${e.locked ? '已锁定' : '锁定'}</button>
-          <span class="sg-hint" style="margin:0">锁定后落盘才会入图</span>
+          ${editable ? `<button class="btn primary small" data-sg-save>保存</button>` : ''}
+          ${editable ? `<button class="btn ${e.locked ? 'primary' : 'ghost'} small" data-sg-lock>${e.locked ? '已锁定' : '锁定'}</button>` : ''}
+          ${editable ? `<button class="btn danger small" data-sg-delete-node>删除</button>` : '<span class="sg-hint" style="margin:0">已入图，先出图后才能修改</span>'}
         </div>
       </div>`;
     box.querySelector('[data-sg-close]')?.addEventListener('click', () => this.select(null));
+    box.querySelector('[data-sg-save]')?.addEventListener('click', () => {
+      this.saveEvent(n, false, { keepLayout: true });
+    });
+    box.querySelector('[data-sg-delete-node]')?.addEventListener('click', () => {
+      openConfirm({
+        title: '永久删除这个节点？',
+        message: '会从当前落盘批次中删除，不能撤销。',
+        confirmLabel: '删除',
+        danger: true,
+        onConfirm: async () => {
+          try {
+            await apiPost('/staging/delete', { id: state.staging.sel, idx: n.idx });
+            await loadStaging(true);
+            renderPage();
+          } catch (e) { toast(`删除失败：${e?.message || e}`, 'bad'); }
+        },
+      });
+    });
     box.querySelector('[data-sg-lock]')?.addEventListener('click', () => {
       e.locked = !e.locked;
       this.saveEvent(n, true, { keepLayout: true, lockOnly: true });
@@ -4934,6 +4956,7 @@ function pageStaging() {
   const events = detail?.events || [];
   const lockedCount = events.filter((e) => e.locked).length;
   const pending = detail?.status === 'pending';
+  const committed = detail?.status === 'committed';
   const cards = list.map((b) => `<button class="staging-item ${st.sel === b.id ? 'is-active' : ''}" type="button" data-batch-id="${esc(b.id)}">
     <div class="staging-item-top">
       ${stagingStatusBadge(b.status)}
@@ -4962,8 +4985,9 @@ function pageStaging() {
     <div class="graph-page staging-graph-page">
     <div class="graph-toolbar">
       <div class="sg-batch-title">${esc(detail?.id || '—')} <span class="badge ${pending ? 'violet' : 'high'}">${stagingStatusText(detail?.status)}</span></div>
-      ${pending ? `<button class="btn small primary" data-act="commit-staging">${icon('save', 14)} 确认入图</button>
-        <button class="btn small ghost" data-act="discard-staging">丢弃</button>` : ''}
+      <button class="btn small primary" data-act="commit-staging" ${pending ? '' : 'disabled'}>${icon('save', 14)} 确认入图</button>
+      <button class="btn small ghost" data-act="uncommit-staging" ${committed && detail?.can_uncommit !== false ? '' : 'disabled'}>出图</button>
+      <button class="btn small ghost" data-act="discard-staging" ${pending ? '' : 'disabled'}>丢弃</button>
       <div class="spacer"></div>
       <button class="btn small ghost" data-sg-fit>${icon('target', 14)} 重置视图</button>
       <label class="switch" title="显示全部候选边">
@@ -5036,6 +5060,23 @@ function mountStaging() {
           await loadStaging(true); renderPage();
         } catch (e) { toast(`入图失败：${e?.message || e}`, 'bad'); }
       } });
+  });
+  $('[data-act="uncommit-staging"]')?.addEventListener('click', () => {
+    openConfirm({
+      title: '把这个批次出图？',
+      message: '会从逻辑图移除该批次新增的节点和关联边，然后把批次恢复为待审查。',
+      confirmLabel: '出图',
+      danger: true,
+      onConfirm: async () => {
+        try {
+          const r = await apiPost('/staging/uncommit', { id: st.sel });
+          toast(`已出图，移除 ${r.removed_nodes || 0} 个节点`, 'good', 3500);
+          await loadStaging(true);
+          await loadGraph(true);
+          renderPage();
+        } catch (e) { toast(`出图失败：${e?.message || e}`, 'bad', 5000); }
+      },
+    });
   });
   $('[data-act="discard-staging"]')?.addEventListener('click', () => {
     openConfirm({ title: '丢弃这个批次？', message: '不会写进图。', confirmLabel: '丢弃', danger: true,

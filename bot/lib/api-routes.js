@@ -280,6 +280,7 @@ export function registerRoutes({ ctx, memoryEndpoint, log = () => {}, consoleTok
       ['/staging/delete', '/api/staging/delete', ['POST']],
       ['/staging/add', '/api/staging/add', ['POST']],
       ['/staging/commit', '/api/staging/commit', ['POST']],
+      ['/staging/uncommit', '/api/staging/uncommit', ['POST']],
       ['/staging/discard', '/api/staging/discard', ['POST']],
       // Web 控制台的召回测试：列表类 / 关联类，直接打到记忆服务的双召回接口
       ['/search', '/recall_semantic', ['POST']],

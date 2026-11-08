@@ -885,12 +885,14 @@ class MemoryService:
                     if not desc or desc in existing:
                         continue
                     existing.add(desc)
-                    # 只允许对话参与者当主客体，不能是实体行里的梗词
-                    # 先算上下文窗口，再按窗口里的说话人定主客体
+                    # 只允许对话参与者当主客体，不能是实体行里的梗词。
+                    # 实际昵称不一定在 CANON 里，canonical_speakers()
+                    # 已经从原始发言行取到了它们，必须一起放行。
                     seg = []
                     src = e.get("src")
                     ee = e.get("ents") or []
-                    persons_e = [x for x in ee if x in CANON]
+                    speakers = set(names)
+                    persons_e = [x for x in ee if x in speakers or x in CANON]
                     if src:
                         seg = pick_window(eu_desc=desc, keywords=ee,
                                           plain_lines=plain_lines,
@@ -905,7 +907,8 @@ class MemoryService:
                     persons = persons_e
                     spk_ctx = [x for x in dict.fromkeys(
                         ln.split("：", 1)[0].strip()
-                        for ln in seg if "：" in ln) if x in CANON]
+                        for ln in seg if "：" in ln)
+                        if x in speakers or x in CANON]
                     if len(persons) >= 2:
                         subj, obj = persons[0], persons[1]
                     elif len(persons) == 1:
@@ -916,6 +919,12 @@ class MemoryService:
                         subj = spk_ctx[0] if spk_ctx else None
                         oth = [x for x in spk_ctx if x != subj]
                         obj = oth[0] if oth else None
+                    # 私聊原始记录只有一侧发言时，另一侧就是 CANON 里的另一个角色。
+                    if str(sess).startswith("private:") and len(CANON) >= 2:
+                        if subj not in CANON:
+                            subj = CANON[0]
+                        if not obj:
+                            obj = next((x for x in CANON if x != subj), None)
                     new_eus.append({
                         "session": sess,
                         "ts": part[0].get("ts", ""),
@@ -1197,13 +1206,17 @@ class MemoryService:
         return batch
 
     def list_batches(self, limit=50):
-        items = []
-        for f in sorted(self.staging_dir().glob("*.json"),
-                        key=lambda x: x.stat().st_mtime, reverse=True)[:limit]:
+        rows = []
+        for f in self.staging_dir().glob("*.json"):
             try:
                 d = json.loads(f.read_text(encoding="utf-8"))
             except Exception:
                 continue
+            rows.append((d.get("created_at") or "", f.stat().st_mtime, d))
+        # 永远按创建时间倒序；文件修改时间只用于同时间批次的兜底。
+        rows.sort(key=lambda x: (str(x[0]), x[1]), reverse=True)
+        items = []
+        for _, _, d in rows[:limit]:
             items.append({
                 "id": d.get("id"),
                 "created_at": d.get("created_at"),
@@ -1213,6 +1226,7 @@ class MemoryService:
                 "sessions": d.get("sessions") or 0,
                 "messages": d.get("messages") or 0,
                 "committed_at": d.get("committed_at"),
+                "can_uncommit": d.get("node_ids") is not None,
                 "result": d.get("result"),
             })
         return items
@@ -1228,15 +1242,21 @@ class MemoryService:
         # 旧批次只存了 desc/source；从 source_text 补说话人，让审查页能显示
         # 主体/客体，而不是一个空的信息栏。
         try:
-            from alias import canonical_speakers
+            from alias import canonical_speakers, CANON
             for e in b.get("events") or []:
                 if e.get("subject") and e.get("object"):
                     continue
                 _, names = canonical_speakers(e.get("source_text") or "")
                 if names:
-                    e.setdefault("subject", names[0])
-                    if len(names) > 1:
-                        e.setdefault("object", names[1])
+                    if not e.get("subject"):
+                        e["subject"] = names[0]
+                    if not e.get("object") and len(names) > 1:
+                        e["object"] = names[1]
+                if str(e.get("session") or "").startswith("private:") and len(CANON) >= 2:
+                    if not e.get("subject") or e["subject"] not in CANON:
+                        e["subject"] = CANON[0]
+                    if not e.get("object") or e["object"] == e["subject"]:
+                        e["object"] = next((x for x in CANON if x != e["subject"]), None)
                 e.setdefault("keywords", [])
                 e.setdefault("locked", False)
         except Exception:
@@ -1270,6 +1290,7 @@ class MemoryService:
         except Exception:
             b["graph_edges"] = []
         b["locked_count"] = sum(1 for e in (b.get("events") or []) if e.get("locked"))
+        b["can_uncommit"] = b.get("node_ids") is not None
         return b
 
     def _norm_event(self, e, idx=None):
@@ -1295,6 +1316,8 @@ class MemoryService:
         b = self.get_batch(sid)
         if not b:
             return {"ok": False, "error": "批次不存在"}
+        if b.get("status") != "pending":
+            return {"ok": False, "error": "已入图或已丢弃的批次不可修改"}
         evs = b.get("events") or []
         if idx < 0 or idx >= len(evs):
             return {"ok": False, "error": "下标越界"}
@@ -1314,10 +1337,29 @@ class MemoryService:
         b = self.get_batch(sid)
         if not b:
             return {"ok": False, "error": "批次不存在"}
+        if b.get("status") != "pending":
+            return {"ok": False, "error": "已入图或已丢弃的批次不可修改"}
         evs = b.get("events") or []
         if idx < 0 or idx >= len(evs):
             return {"ok": False, "error": "下标越界"}
         killed = evs.pop(idx)
+        # 修正本批节点的下标，并移除指向被删节点的候选边。
+        for e in evs:
+            kept = []
+            for c in (e.get("candidates") or []):
+                if c.get("target_type") == "batch":
+                    try:
+                        ti = int(c.get("target_index"))
+                    except Exception:
+                        continue
+                    if ti == idx:
+                        continue
+                    if ti > idx:
+                        c["target_index"] = ti - 1
+                kept.append(c)
+            e["candidates"] = kept
+        for i, e in enumerate(evs):
+            e["i"] = i
         self.save_batch(b)
         return {"ok": True, "deleted": killed, "remaining": len(evs)}
 
@@ -1325,10 +1367,13 @@ class MemoryService:
         b = self.get_batch(sid)
         if not b:
             return {"ok": False, "error": "批次不存在"}
+        if b.get("status") != "pending":
+            return {"ok": False, "error": "已入图或已丢弃的批次不可修改"}
         ev = self._norm_event(fields)
         if not ev["desc"]:
             return {"ok": False, "error": "事件描述不能为空"}
         b.setdefault("events", []).append(ev)
+        ev["i"] = len(b["events"]) - 1
         self.save_batch(b)
         return {"ok": True, "event": ev, "count": len(b["events"])}
 
@@ -1336,10 +1381,38 @@ class MemoryService:
         b = self.get_batch(sid)
         if not b:
             return {"ok": False, "error": "批次不存在"}
+        if b.get("status") != "pending":
+            return {"ok": False, "error": "只有待审查批次可以丢弃"}
         b["status"] = "discarded"
         b["discarded_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
         self.save_batch(b)
         return {"ok": True, "id": sid}
+
+    def uncommit_batch(self, sid):
+        """把已入图批次撤回为待审查：删除该批次新增的节点及关联边。"""
+        b = self.get_batch(sid)
+        if not b:
+            return {"ok": False, "error": "批次不存在"}
+        if b.get("status") != "committed":
+            return {"ok": False, "error": "只有已入图批次可以出图"}
+        ids = b.get("node_ids")
+        if ids is None:
+            return {"ok": False, "error": "旧批次未记录新增节点，无法安全出图"}
+        ids = {int(x) for x in ids}
+        eus = {i: e for i, e in self.engine.eus.items() if i not in ids}
+        edges = [e for e in self.engine.edges
+                 if e.get("a") not in ids and e.get("b") not in ids]
+        removed = len(self.engine.eus) - len(eus)
+        self._save_graph(edges, eus)
+        self._reload_engine()
+        b["status"] = "pending"
+        b.pop("committed_at", None)
+        b.pop("result", None)
+        b.pop("node_ids", None)
+        b["uncommitted_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        self.save_batch(b)
+        return {"ok": True, "id": sid, "removed_nodes": removed,
+                "nodes": len(self.engine.eus), "edges": len(self.engine.edges)}
 
     def commit_batch(self, sid):
         """把暂存批次真正写进图（建边 + 落盘 + 重载）。
@@ -1352,6 +1425,8 @@ class MemoryService:
             return {"ok": False, "error": "批次不存在"}
         if b.get("status") == "committed":
             return {"ok": False, "error": "这批已经入过图了"}
+        if b.get("status") != "pending":
+            return {"ok": False, "error": "只有待审查批次可以入图"}
         all_evs = [e for e in (b.get("events") or []) if (e.get("desc") or "").strip()]
         unlocked = [e for e in all_evs if not e.get("locked")]
         evs = [e for e in all_evs if e.get("locked")]
@@ -1462,6 +1537,7 @@ class MemoryService:
 
         b["status"] = "committed"
         b["committed_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        b["node_ids"] = sorted(int(x) for x in new_ids.values())
         b["result"] = {"new_eus": added, "new_edges": added_edges,
                        "nodes": len(self.engine.eus),
                        "edges": len(self.engine.edges),
@@ -1813,6 +1889,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, SVC.add_staged_event(body.get("id"), body))
             elif self.path.startswith("/api/staging/commit"):
                 self._send(200, SVC.commit_batch(body.get("id")))
+            elif self.path.startswith("/api/staging/uncommit"):
+                self._send(200, SVC.uncommit_batch(body.get("id")))
             elif self.path.startswith("/api/staging/discard"):
                 self._send(200, SVC.discard_batch(body.get("id")))
             elif self.path.startswith("/api/consolidate"):
