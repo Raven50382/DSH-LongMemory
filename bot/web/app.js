@@ -198,6 +198,7 @@ const state = {
   errors: {},
   actions: { consolidating: false },
   lastConsolidate: null,
+  consolidateWait: false,
   recallMode: 'semantic',
   recallResult: null,
   recallError: null,
@@ -695,6 +696,8 @@ function loadThresholds(force = false) {
   return once('thresholds', async () => {
     try {
       state.thresholds = await apiGet('/thresholds');
+      // 落盘页可能已先按默认阈值画过一帧；阈值到达后强制重绘。
+      if (typeof StagingGraph !== 'undefined' && StagingGraph.ui) StagingGraph.draw();
     } catch (e) {
       state.thresholdsMsg = e?.message || String(e);
     }
@@ -740,6 +743,7 @@ async function loadPageData(page, { force = false } = {}) {
     // 整备刚结束时，落盘批次是新的；不能复用上次进入页面时的缓存。
     jobs.push(loadStaging(true));
     jobs.push(loadSettings(force));
+    jobs.push(loadThresholds(force));
   } else if (page === 'system') {
     jobs.push(loadHealth());
     jobs.push(loadTrash(force));
@@ -3753,10 +3757,10 @@ function pageConsolidate() {
         <div class="card-head"><h3>立刻整备</h3><span class="hint">手动跑一次</span></div>
         <p class="lead">把还没整备的聊天立刻切分整理。默认结果先进入「落盘」页暂存，审查确认后才写进逻辑图。</p>
         <div class="consolidate-run">
-          <button class="btn primary" type="button" id="runConsolidate" ${state.actions.consolidating ? 'disabled' : ''}>
-            ${state.actions.consolidating ? '<span class="spinner"></span>整备中…' : `${icon('play', 15)} 立刻整备`}
+          <button class="btn primary" type="button" id="runConsolidate" ${state.actions.consolidating || state.consolidateWait ? 'disabled' : ''}>
+            ${state.actions.consolidating ? '<span class="spinner"></span>整备中…' : state.consolidateWait ? '<span class="spinner"></span>等待新条目…' : `${icon('play', 15)} 立刻整备`}
           </button>
-          <div class="run-status"><span id="runTimer">${state.actions.consolidating ? '正在处理…' : '还没跑过'}</span></div>
+          <div class="run-status"><span id="runTimer">${state.consolidateWait ? '等待新的落盘条目出现…' : state.actions.consolidating ? '正在处理…' : '还没跑过'}</span></div>
           <div id="runResult">${consolidateResultHtml(state.lastConsolidate)}</div>
         </div>
       </aside>
@@ -3813,9 +3817,33 @@ function mountConsolidate() {
   $('#runConsolidate')?.addEventListener('click', (ev) => runConsolidate(ev.currentTarget));
 }
 
+async function waitForNewStaging(baseline) {
+  const tick = async () => {
+    if (!state.consolidateWait) return;
+    try {
+      const d = await apiGet('/staging/list');
+      const items = Array.isArray(d?.items) ? d.items : [];
+      if (items.some((x) => x && x.id && !baseline.has(x.id))) {
+        state.consolidateWait = false;
+        await loadStaging(true);
+        if (state.page === 'consolidate') renderPage();
+        return;
+      }
+    } catch { /* 网络抖动，继续等 */ }
+    setTimeout(tick, 5000);
+  };
+  setTimeout(tick, 3000);
+}
+
 async function runConsolidate(btn) {
-  if (state.actions.consolidating) return;
+  if (state.actions.consolidating || state.consolidateWait) return;
   state.actions.consolidating = true;
+  // 记录本次运行前已有的落盘批次；运行结束后只有出现新批次才解除锁定。
+  let baseline = new Set();
+  try {
+    const before = await apiGet('/staging/list');
+    baseline = new Set((before?.items || []).map((x) => x.id).filter(Boolean));
+  } catch { /* 读不到就按空基线处理，仍由 r.staged/new_eus 判断 */ }
   const started = Date.now();
   const timer = setInterval(() => {
     const el = $('#runTimer');
@@ -3830,6 +3858,7 @@ async function runConsolidate(btn) {
   try {
     const r = await apiPost('/consolidate', {});
     state.lastConsolidate = r;
+    const hasNew = !!r.staged && !baseline.has(r.staged) || (r.new_eus || 0) > 0;
     // 新批次已经落盘：下一次进「落盘」必须重新拉，并直接选中这批。
     state.staging.loaded = false;
     if (r.staged) state.staging.sel = r.staged;
@@ -3842,6 +3871,10 @@ async function runConsolidate(btn) {
         ? `已暂存 ${r.new_eus} 个事件，去「落盘」页审查确认入图`
         : `整备完成：新增 ${r.new_eus} 个事件、${r.new_edges} 条关联`;
     toast(toastMsg, r.skipped ? 'info' : 'good', 5000);
+    if (!hasNew) {
+      state.consolidateWait = true;
+      if (label) label.textContent = '等待新的落盘条目出现…';
+    }
     if (state.page === 'overview') {
       navigate('consolidate');
     }
@@ -3852,9 +3885,15 @@ async function runConsolidate(btn) {
     state.actions.consolidating = false;
     clearInterval(timer);
     if (btn?.isConnected) {
-      btn.disabled = false;
-      btn.innerHTML = `${icon('play', 15)} 立刻整备`;
+      if (state.consolidateWait) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span>等待新条目…';
+      } else {
+        btn.disabled = false;
+        btn.innerHTML = `${icon('play', 15)} 立刻整备`;
+      }
     }
+    if (state.consolidateWait) waitForNewStaging(baseline);
   }
 }
 
@@ -3882,6 +3921,7 @@ const StagingGraph = {
   drag: null,
   showLabels: false,
   showCandidates: true,
+  showHidden: false,
   pulse: null,
   lockPulse: null,
 
@@ -4228,9 +4268,11 @@ const StagingGraph = {
     const selLocked = !!selNode?.locked;
     const hover = this.hover;
     const nearSel = (e) => sel != null && (e.source === sel || e.target === sel);
+    const edgeVisible = Number(state.thresholds?.edgeVisible ?? 0.10);
+    const visibleEdges = d.edges.filter((e) => Number(e.score || 0) >= edgeVisible);
     const selAdj = new Map();
     if (sel != null) {
-      for (const e of d.edges) {
+      for (const e of visibleEdges) {
         if (e.source === sel) selAdj.set(e.target, Number(e.score) || 0);
         else if (e.target === sel) selAdj.set(e.source, Number(e.score) || 0);
       }
@@ -4243,8 +4285,8 @@ const StagingGraph = {
       return { mx: (a.x + b.x) / 2 - (dy / dist) * bend, my: (a.y + b.y) / 2 + (dx / dist) * bend };
     };
     const keyOf = (e) => `${e.source}|${e.target}|${e.kind}`;
-    // 普通边：只画稀疏后的旧边；候选边全部用虚线。
-    for (const e of d.edges) {
+    // 两个绘制循环都只遍历 visibleEdges，避免任何一条路径漏过滤。
+    for (const e of visibleEdges) {
       const hot = nearSel(e);
       if (e.kind === 'candidate' && hot && selLocked) continue;
       if (e.kind === 'old' && !hot && !this.sparse.has(keyOf(e))) continue;
@@ -4281,7 +4323,7 @@ const StagingGraph = {
     // 选中节点的边最后画：青绿→蓝紫渐变，带一层柔光。
     if (sel != null) {
       ctx.save();
-      for (const e of d.edges) {
+      for (const e of visibleEdges) {
         if (!nearSel(e)) continue;
         const a = this.screen(e.source), b = this.screen(e.target);
         if (!a || !b) continue;
@@ -4616,6 +4658,20 @@ const StagingGraph = {
     }
     const e = n.event || {};
     const cands = Array.isArray(e.candidates) ? e.candidates : [];
+    const edgeVisible = Number(state.thresholds?.edgeVisible ?? 0.10);
+    const hiddenCands = cands.filter((c) => Number(c.score || 0) < edgeVisible).length;
+    const candRow = (c, ci, hidden) => `<div class="sg-edge-row${hidden ? ' sg-edge-unshown' : ''}" data-ci="${ci}" data-tt="${c.target_type}" data-ti="${c.target_type === 'batch' ? c.target_index : c.target_id}" data-manual="${c.manual ? '1' : '0'}"${hidden ? ' style="display:none"' : ''}>
+            <button type="button" class="sg-target-link" data-sg-open-target data-tt="${c.target_type}" data-ti="${c.target_type === 'batch' ? c.target_index : c.target_id}">${c.target_type === 'node' ? '#' + esc(c.target_id) : '本批 #' + (Number(c.target_index) + 1)}</button>
+            <span class="desc">${esc(c.target_desc || '')}</span>
+            <input class="input mono" data-sg-score value="${Number(c.score || 0).toFixed(2)}">
+            <button class="icon-btn" data-sg-del-edge title="删除">${icon('x', 13)}</button>
+          </div>`;
+    const highRows = cands.map((c, ci) => ({ c, ci }))
+      .filter(({ c }) => Number(c.score || 0) >= edgeVisible)
+      .map(({ c, ci }) => candRow(c, ci, false)).join('');
+    const lowRows = cands.map((c, ci) => ({ c, ci }))
+      .filter(({ c }) => Number(c.score || 0) < edgeVisible)
+      .map(({ c, ci }) => candRow(c, ci, !this.showHidden)).join('');
     const targets = (state.staging.detail?.targets || []).filter((t) => !(t.type === 'batch' && t.index === n.idx));
     box.innerHTML = `<div class="sg-drawer-head"><span class="node-id">#${esc(n.idx + 1)}</span><h3>本批事件</h3><div class="spacer"></div><button class="icon-btn" data-sg-close aria-label="关闭">${icon('x', 16)}</button></div>
       <div class="sg-drawer-body">
@@ -4628,12 +4684,9 @@ const StagingGraph = {
         <label class="sg-field">原始对话<textarea class="textarea mono" data-sg-field="source_text" style="min-height:120px">${esc(e.source_text || '')}</textarea></label>
         <div class="sg-edge-title">候选边（虚线）</div>
         <div class="sg-edge-list">
-          ${cands.map((c, ci) => `<div class="sg-edge-row" data-ci="${ci}" data-tt="${c.target_type}" data-ti="${c.target_type === 'batch' ? c.target_index : c.target_id}" data-manual="${c.manual ? '1' : '0'}">
-            <button type="button" class="sg-target-link" data-sg-open-target data-tt="${c.target_type}" data-ti="${c.target_type === 'batch' ? c.target_index : c.target_id}">${c.target_type === 'node' ? '#' + esc(c.target_id) : '本批 #' + (Number(c.target_index) + 1)}</button>
-            <span class="desc">${esc(c.target_desc || '')}</span>
-            <input class="input mono" data-sg-score value="${Number(c.score || 0).toFixed(2)}">
-            <button class="icon-btn" data-sg-del-edge title="删除">${icon('x', 13)}</button>
-          </div>`).join('') || '<div class="muted small">还没有候选边</div>'}
+          ${highRows || (hiddenCands ? '<div class="muted small">没有达到阈值的候选边</div>' : '<div class="muted small">还没有候选边</div>')}
+          ${hiddenCands ? `<div class="sg-edge-more"><button class="btn small ghost" type="button" data-sg-show-hidden>${this.showHidden ? '收起隐藏边' : '展开隐藏边'}</button></div>` : ''}
+          ${lowRows}
         </div>
         <div class="sg-edge-add">
           <input class="input mono" data-sg-target placeholder="EU 编号，本批用 b3">
@@ -4649,6 +4702,15 @@ const StagingGraph = {
     box.querySelector('[data-sg-lock]')?.addEventListener('click', () => {
       e.locked = !e.locked;
       this.saveEvent(n, true, { keepLayout: true, lockOnly: true });
+    });
+    box.querySelector('[data-sg-show-hidden]')?.addEventListener('click', (ev) => {
+      this.showHidden = !this.showHidden;
+      // 只切换隐藏行的显示，不重建抽屉，避免滚动位置被重置。
+      box.querySelectorAll('.sg-edge-unshown').forEach((row) => {
+        row.style.display = this.showHidden ? '' : 'none';
+      });
+      const btn = ev.currentTarget;
+      if (btn) btn.textContent = this.showHidden ? '收起隐藏边' : '展开隐藏边';
     });
     box.querySelector('[data-sg-add-edge]')?.addEventListener('click', () => {
       const sel = box.querySelector('[data-sg-target]');

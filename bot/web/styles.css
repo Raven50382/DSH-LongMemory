@@ -1560,6 +1560,7 @@ svg { display: block; }
 .sg-edge-row .desc { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sg-edge-row .input { padding: 4px 5px; font-size: 10.5px; }
 .sg-edge-add { display: grid; grid-template-columns: minmax(0, 1fr) 54px auto; gap: 5px; align-items: center; margin-top: 7px; }
+.sg-edge-more { display: flex; justify-content: flex-start; margin-top: 6px; }
 .sg-edge-add .input { padding: 5px 6px; font-size: 10.5px; }
 .sg-drawer-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
 .sg-hint { color: var(--faint); font-size: 11px; line-height: 1.5; margin: 8px 0; }
