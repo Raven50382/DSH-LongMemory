@@ -422,14 +422,43 @@ class MemoryService:
             return []
         return box.get("v") or []
 
-    @staticmethod
-    def _eu_event(eu):
-        """把切分结果转成 DemoEngine 认识的 event 结构。"""
+    def _norm_entity(self, x):
+        """把实体名归一成「主人」/「我」/原样。
+
+        身份池来自「主人」页面：owner.json（主人）、self.json（机器人）。
+        命中任一 id 或昵称就折叠到角色名；其他人原样保留（昵称优先，没有昵称就是 ID）。
+        """
+        s = str(x or "").strip()
+        if not s:
+            return None
+        try:
+            owner = self.read_owner() or {}
+            me = self.read_self() or {}
+        except Exception:
+            return s
+        if s in {str(v).strip() for v in (owner.get("ids") or [])} or \
+           s in {str(v).strip() for v in (owner.get("names") or [])}:
+            return "主人"
+        if s in {str(v).strip() for v in (me.get("ids") or [])} or \
+           s in {str(v).strip() for v in (me.get("names") or [])}:
+            return "我"
+        return s
+
+    def _eu_event(self, eu):
+        """把切分结果转成 DemoEngine 认识的 event 结构。
+
+        desc 保持「主体/客体」占位符不变，只把实体归一后填进 subject / object。
+        """
+        ents = [str(x).strip() for x in (eu.get("ents") or []) if str(x).strip()]
+        norm = [self._norm_entity(x) for x in ents]
+        norm = [x for x in norm if x]
+        subj = norm[0] if norm else None
+        obj = next((x for x in norm if x != subj), None)
         return {
             "event_desc": eu.get("desc", ""),
-            "subject": None,
-            "object": None,
-            "keywords": eu.get("ents") or [],
+            "subject": subj,
+            "object": obj,
+            "keywords": ents,
         }
 
     # ---------- 轻量召回 ----------
@@ -441,9 +470,20 @@ class MemoryService:
         out = []
         for it in items:
             if isinstance(it, str):
-                d = it.strip()
-                if d:
-                    out.append({"ents": [], "desc": d})
+                s = it.strip()
+                if not s:
+                    continue
+                # 调用方有时把整个 EU 数组/对象序列化成 JSON 字符串传过来；
+                # 直接当纯文本会把 ents 丢掉，导致 subject/object 为空、召回失效。
+                if s[:1] in ("[", "{"):
+                    try:
+                        parsed = json.loads(s)
+                    except Exception:
+                        parsed = None
+                    if parsed is not None:
+                        out.extend(self._eus_from_param(parsed))
+                        continue
+                out.append({"ents": [], "desc": s})
             elif isinstance(it, dict):
                 d = str(it.get("desc") or it.get("event_desc") or "").strip()
                 if d:
@@ -925,6 +965,12 @@ class MemoryService:
                             subj = CANON[0]
                         if not obj:
                             obj = next((x for x in CANON if x != subj), None)
+                    subj = self._norm_entity(subj)
+                    obj = self._norm_entity(obj)
+                    if not obj:
+                        cand = [self._norm_entity(x) for x in (ents or [])]
+                        cand = [x for x in cand if x and x != subj]
+                        obj = cand[0] if cand else None
                     new_eus.append({
                         "session": sess,
                         "ts": part[0].get("ts", ""),

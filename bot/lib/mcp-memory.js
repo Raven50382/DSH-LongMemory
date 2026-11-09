@@ -16,6 +16,20 @@ import { compactRecall } from './recall-output.js';
 import { createMemoryClient } from './memory.js';
 import { createQqSender } from './qq-send.js';
 
+/**
+ * EU 参数的形状：一条原子事件 = desc（主体/客体占位）+ ents（原话里出现的具体名字）。
+ * 也接受纯字符串，兼容只给 desc 的写法。
+ */
+const euItemSchema = z.union([
+  z.string(),
+  z.object({
+    desc: z.string().describe('主体+动作+客体，8~18 字，用「主体」「客体」占位，不写人名'),
+    ents: z.array(z.string()).optional()
+      .describe('这句话里出现的具体名字/称呼/物件，原样照抄，不要归一化成角色名'),
+  }),
+]);
+const euSchema = z.union([euItemSchema, z.array(euItemSchema)]);
+
 const ENDPOINT = process.env.XLIENS_ENDPOINT || 'http://127.0.0.1:8317';
 const DEFAULT_SESSION = process.env.XLIENS_SESSION || '';
 
@@ -58,7 +72,7 @@ server.tool(
   + '格式不对会导致召回不准。',
   {
     query: z.string().describe('对方的原话，仅供日志和兜底使用'),
-    eu: z.union([z.string(), z.array(z.string())]).optional().describe('你拆出来的原子事件（推荐）'),
+    eu: euSchema.optional().describe('你拆出来的原子事件。每条写成 {desc, ents}：desc 用主体/客体占位、不写人名；ents 原样写这句话出现的具体名字，不要归一化'),
     session: z.string().optional().describe('当前会话标识（如 group:123456 / private:10001），用于限定记忆范围'),
     limit: z.number().int().min(1).max(50).optional().describe('最多返回几条，默认 10'),
   },
@@ -85,7 +99,7 @@ server.tool(
   + '像正常人回想那样直接把内容说出来。',
   {
     query: z.string().describe('对方的原话，仅供日志和兜底使用'),
-    eu: z.union([z.string(), z.array(z.string())]).optional().describe('你拆出来的原子事件（推荐）'),
+    eu: euSchema.optional().describe('你拆出来的原子事件。每条写成 {desc, ents}：desc 用主体/客体占位、不写人名；ents 原样写这句话出现的具体名字，不要归一化'),
     session: z.string().optional().describe('当前会话标识（如 group:123456 / private:10001）'),
     hops: z.number().int().min(1).max(3).optional().describe('向外扩几跳，默认 1'),
     max_neighbors: z.number().int().min(1).max(30).optional().describe('最多返回几个邻居，默认 7'),
