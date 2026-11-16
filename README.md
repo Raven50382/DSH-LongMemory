@@ -59,21 +59,23 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 
 ## CE 模型
 
-CE 模型（v48_s3，约 2.1GB）在 GitHub Release：
+CE 模型（v69，约 2.1GB）在 GitHub Release：
 
-<https://github.com/Raven50382/DSH-LongMemory/releases/tag/ce-model-v48-s3>
+<https://github.com/Raven50382/DSH-LongMemory/releases/tag/ce-model-v69>
 
 下载分片和 `.sha256` 后合并：
 
 ```powershell
-cmd /c copy /b ce_model_v48_s3.tar.part00+ce_model_v48_s3.tar.part01+ce_model_v48_s3.tar.part02 ce_model_v48_s3.tar
+cmd /c copy /b Xliens-CE-v69.zip.part01+Xliens-CE-v69.zip.part02 Xliens-CE-v69.zip
 # Linux/macOS:
-# cat ce_model_v48_s3.tar.part* > ce_model_v48_s3.tar
-# sha256sum -c ce_model_v48_s3.sha256
-tar xf ce_model_v48_s3.tar
+# cat Xliens-CE-v69.zip.part* > Xliens-CE-v69.zip
+# sha256sum -c Xliens-CE-v69.sha256
+# unzip Xliens-CE-v69.zip -d ce_model_v69
 ```
 
-解压后把 `ce_model_v48_s3/` 重命名为 `models/reg_v48_s3/`（或把里面的文件放进该目录）。
+Windows PowerShell 也可以按 `MERGE.md` 里的 `Get-ChildItem ... | Sort-Object Name` 方式合并。
+
+解压后把 `ce_model_v69/` 重命名为 `models/reg_v69/`（或把里面的文件放进该目录）。
 目录名要和 `bot/lib/index.js` 里的 `memory.model` 一致。
 
 仓库不附带任何逻辑图；首次启动会创建一个空的 `graph_main/`，你可以导入自己的图或从整备开始。

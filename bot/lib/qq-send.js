@@ -97,7 +97,7 @@ export function createQqSender({ credentialFile } = {}) {
       }
       const r = await call(kind === 'group'
         ? 'send_group_msg' : 'send_private_msg', params);
-      sent.push({ id: r?.data?.message_id ?? null });
+      sent.push({ id: r?.data?.message_id ?? null, text: body });
       // 多条之间稍作间隔，像真人打字
       if (list.length > 1) {
         await new Promise((res) => setTimeout(res, 400 + Math.random() * 600));

@@ -15,6 +15,7 @@ import { SNOWLUMA_CRED } from './paths.js';
 import { compactRecall } from './recall-output.js';
 import { createMemoryClient } from './memory.js';
 import { createQqSender } from './qq-send.js';
+import { appendOutbound } from './outbound-context.js';
 
 /**
  * EU 参数的形状：一条原子事件 = desc（主体/客体占位）+ ents（原话里出现的具体名字）。
@@ -158,6 +159,8 @@ server.tool(
         return asText('一次最多发 5 条，请精简。', true);
       }
       const sent = await qq.send(sessionOf(session), list, { replyTo });
+      // 发送成功后再记 pending；失败不写，避免把没发出去的内容当成上下文。
+      try { appendOutbound(sessionOf(session), sent); } catch { /* 不影响发送 */ }
       return asText(`已发送 ${sent.length} 条`);
     } catch (e) {
       return asText(`发送失败：${e?.message ?? e}`, true);

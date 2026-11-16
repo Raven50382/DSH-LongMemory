@@ -41,5 +41,8 @@ export const LOG_PATH = process.env.XLIENS_LOG
 /** 本地凭证（不进 git）：第一行 wsUrl，第二行 accessToken。 */
 export const SNOWLUMA_CRED = path.join(FILE_DIR, 'snowluma.ws');
 
+/** 切分服务配置（不进 git）：KEY=VALUE 行。 */
+export const SEG_ENV = path.join(FILE_DIR, 'seg.env');
+
 /** 白名单文件。 */
 export const ALLOW_FILE = path.join(FILE_DIR, 'allow.json');

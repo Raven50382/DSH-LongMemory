@@ -23,7 +23,7 @@ import { registerWebConsole } from './web-console.js';
 import { registerPersona } from './persona.js';
 import { startConsolidateScheduler } from './consolidate-scheduler.js';
 import { ensureMemory } from './memory-launch.js';
-import { ROOT, DATA_ROOT, FILE_DIR, SNOWLUMA_CRED, ALLOW_FILE } from './paths.js';
+import { ROOT, DATA_ROOT, FILE_DIR, SEG_ENV, SNOWLUMA_CRED, ALLOW_FILE } from './paths.js';
 
 export const name = 'xliens';
 
@@ -50,7 +50,7 @@ const DEFAULTS = {
     endpoint: 'http://127.0.0.1:8317',
     timeoutMs: 15000,
     // 自动拉起 8317 时用的模型；要和 graph_main/meta.json 的 model 对得上
-    model: 'models/reg_v48_s3',
+    model: 'models/reg_v69',
   },
   workspace: { title: 'Xliens机器人', path: '' },
   sessionTitle: {
@@ -280,6 +280,7 @@ function applyInner(ctx, rawConfig) {
     dataRoot: cfg.dataRoot || DATA_ROOT,
     port: Number(new URL(cfg.memory.endpoint).port || 8317),
     model: cfg.memory.model,
+    envFile: cfg.envFile || SEG_ENV,
     log,
   }).then((r) => {
     if (!r.ok) warn('记忆服务未就绪：召回与控制台会不可用（看 logs/serve.err.log）');

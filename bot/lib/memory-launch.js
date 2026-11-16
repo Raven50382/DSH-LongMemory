@@ -28,12 +28,26 @@ function checkPort(host, port, timeoutMs = 800) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/** 读 seg.env（KEY=VALUE 行）成对象。 */
+function readEnvFile(file) {
+  const out = {};
+  try {
+    for (const raw of fs.readFileSync(file, 'utf8').split(/\r?\n/)) {
+      const line = raw.trim();
+      if (!line || line.startsWith('#')) continue;
+      const i = line.indexOf('=');
+      if (i > 0) out[line.slice(0, i).trim()] = line.slice(i + 1).trim();
+    }
+  } catch { /* 没有就算了 */ }
+  return out;
+}
+
 /**
  * 确保记忆服务在跑。返回 { started, ok }。
  */
 export async function ensureMemory({
   root, dataRoot, python, entry, port = 8317, model,
-  log = () => {}, waitMs = 60000,
+  envFile, log = () => {}, waitMs = 60000,
 } = {}) {
   if (await checkPort('127.0.0.1', port)) {
     let health = null;
@@ -83,7 +97,8 @@ export async function ensureMemory({
   const env = {
     ...process.env,
     PYTHONIOENCODING: 'utf-8',
-    // 数据目录是硬边界
+    ...readEnvFile(envFile || path.join(data, 'file', 'seg.env')),
+    // 数据目录是硬边界：不能被 seg.env 里的旧 XLIENS_* 覆盖
     XLIENS_DATA_ROOT: data,
     XLIENS_PENDING: path.join(data, 'pending'),
     XLIENS_SETTINGS: path.join(data, 'file', 'settings.json'),
