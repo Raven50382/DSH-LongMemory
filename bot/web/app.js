@@ -5363,7 +5363,7 @@ function pageSystem() {
           ${kvItem('CE 远端', h.ce_remote_configured ? '已配置' : '未配置')}
           ${kvItem('召回调用', fmtNum(h.calls))}
           ${kvItem('响应延迟', state.healthLatency != null ? `${state.healthLatency} ms` : '—')}
-          ${kvItem('模型', esc(meta.model || '—'))}
+          ${kvItem('模型', esc(h.runtime_model || meta.model || '—'))}
           ${kvItem('建图模式', esc(meta.mode || '—'))}
           ${kvItem('建边规则', esc(meta.edge_policy || '—'))}
           ${kvItem('更新时间', esc(meta.updated_at || '—'), true)}

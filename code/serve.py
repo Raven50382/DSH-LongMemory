@@ -1784,6 +1784,7 @@ class MemoryService:
                 # CE 打分走的是哪边：remote(3080Ti) / local(CPU) / local(熔断)
                 "ce_mode": getattr(self.engine, "_ce_last_mode", "local"),
                 "ce_remote_configured": bool(self.engine._remote_url()),
+                "runtime_model": Path(self.model_path).name,
                 "meta": self.meta}
 
 
